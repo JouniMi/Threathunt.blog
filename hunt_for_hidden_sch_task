@@ -1,0 +1,14 @@
+DeviceRegistryEvents
+| where Timestamp > ago(1h)
+| where ActionType == @"RegistryKeyCreated"
+| where RegistryKey startswith @"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\TaskCache\Tree\"
+| project Timestamp, DeviceName, ActionType, InitiatingProcessFileName, RegistryKey
+
+DeviceRegistryEvents
+| where Timestamp > ago(1h)
+| where PreviousRegistryKey contains "HKEY_LOCAL_MACHINE"
+| where ActionType == 'RegistryKeyDeleted' or ActionType == 'RegistryValueDeleted' 
+
+DeviceEvents
+| where Timestamp > ago(1h)
+| where ActionType == 'ScheduledTaskCreated' 
