@@ -1,0 +1,30 @@
+https://threathunt.blog/detecting-follina-with-mde/
+
+DeviceProcessEvents 
+| where InitiatingProcessFileName has_any ("winword.exe","excel.exe","outlook.exe","powershell.exe","powerpnt.exe")
+| where FileName =~ "msdt.exe"
+| project Timestamp, DeviceName, InitiatingProcessFileName, InitiatingProcessCommandLine, FileName, ProcessCommandLine
+
+DeviceProcessEvents 
+| where InitiatingProcessFileName has_any ("winword.exe","excel.exe","outlook.exe","powershell.exe")
+| where FileName =~ "msdt.exe"
+| project Timestamp, DeviceName, InitiatingProcessFileName, InitiatingProcessCommandLine, FileName, ProcessCommandLine, InitiatingProcessId, InitiatingProcessCreationTime
+| join (
+DeviceNetworkEvents
+| where InitiatingProcessFileName has_any ("winword.exe","excel.exe","outlook.exe","powershell.exe")
+| where RemoteUrl !endswith "microsoft.com"
+| where RemoteUrl !endswith "live.com"
+| project DeviceName, InitiatingProcessFileName, InitiatingProcessCommandLine, InitiatingProcessId, InitiatingProcessCreationTime, RemoteIP, RemotePort, RemoteUrl, RemoteIPType
+) on DeviceName, InitiatingProcessFileName, InitiatingProcessCommandLine, InitiatingProcessId, InitiatingProcessCreationTime
+| project DeviceName, InitiatingProcessFileName, InitiatingProcessCommandLine, InitiatingProcessId, InitiatingProcessCreationTime, RemoteIP, RemotePort, RemoteUrl, RemoteIPType, FileName, ProcessCommandLine
+
+DeviceProcessEvents 
+| where InitiatingProcessFileName has_any ("winword.exe","excel.exe","outlook.exe","powershell.exe","powerpnt.exe")
+| where FileName =~ "msdt.exe"
+| project Timestamp, DeviceName, InitiatingProcessFileName, InitiatingProcessCommandLine, FileName, ProcessCommandLine
+| join (
+DeviceNetworkEvents
+| where InitiatingProcessFileName has_any ("msdt.exe","sdiagnhost.exe")
+| project DeviceName, InitiatingProcessFileName, InitiatingProcessCommandLine, InitiatingProcessId, InitiatingProcessCreationTime, RemoteIP, RemotePort, RemoteUrl, RemoteIPType
+) on DeviceName
+| project DeviceName, InitiatingProcessFileName, InitiatingProcessCommandLine, InitiatingProcessId, InitiatingProcessCreationTime, RemoteIP, RemotePort, RemoteUrl, RemoteIPType, FileName, ProcessCommandLine
