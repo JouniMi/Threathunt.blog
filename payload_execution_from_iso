@@ -1,0 +1,47 @@
+https://threathunt.blog/detecting-a-payload-delivered-with-iso-files-using-mde/
+
+DeviceEvents 
+| where ActionType == 'BrowserLaunchedToOpenUrl' 
+| where RemoteUrl endswith ".lnk"
+| where RemoteUrl !startswith "C:"
+| project Timestamp, DeviceName, ActionType, InitiatingProcessFileName, InitiatingProcessCommandLine, RemoteUrl
+| parse RemoteUrl with Drive '\\' *
+| extend Drive = tostring(Drive)
+| where isnotempty(Drive)
+
+DeviceEvents 
+| where ActionType == 'BrowserLaunchedToOpenUrl' 
+| where RemoteUrl endswith ".lnk"
+| where RemoteUrl !startswith "C:"
+| project LNKLaunchTimestamp = Timestamp, DeviceName, RemoteUrl
+| parse RemoteUrl with Drive '\\' *
+| extend Drive= tostring(Drive)
+| where isnotempty(Drive)
+| join (
+DeviceImageLoadEvents
+| where FolderPath !startswith "C:"
+| parse FolderPath with Drive '\\' *
+| project Drive= tostring(Drive), ImageLoadTimestamp = Timestamp, LoadedImageName = FileName, LoadedImageSHA1 = SHA1, LoadedImagePath = FolderPath, DeviceName, ImageLoadProcessName = InitiatingProcessFileName, ImageLoadProcessCmdline = InitiatingProcessCommandLine, ImageLoadProcessFolderPath = InitiatingProcessFolderPath, ImageLoadProcessParent = InitiatingProcessParentFileName
+) on DeviceName, Drive
+| where ImageLoadTimestamp between (LNKLaunchTimestamp ..(LNKLaunchTimestamp+1m))
+| project-away Drive1, DeviceName1
+| project-reorder LNKLaunchTimestamp, ImageLoadTimestamp, DeviceName, RemoteUrl, Drive, LoadedImageName, LoadedImageSHA1, LoadedImagePath, ImageLoadProcessName, ImageLoadProcessCmdline, ImageLoadProcessFolderPath, ImageLoadProcessParent
+
+DeviceEvents 
+| where ActionType == 'BrowserLaunchedToOpenUrl' 
+| where RemoteUrl endswith ".lnk"
+| where RemoteUrl !startswith "C:"
+| project LNKLaunchTimestamp = Timestamp, DeviceName, RemoteUrl
+| parse RemoteUrl with Drive '\\' *
+| extend Drive= tostring(Drive)
+| where isnotempty(Drive)
+| join (
+DeviceProcessEvents
+| where FolderPath !startswith "C:"
+| parse FolderPath with Drive '\\' *
+| project Drive= tostring(Drive), StartedProcessTimestamp = Timestamp, StartedProcessName = FileName, StartedProcessSHA1 = SHA1, StartedProcessCommandline = ProcessCommandLine, StartedProcessPath = FolderPath, DeviceName, StartedProcessParentName = InitiatingProcessFileName, StartedProcessParentCmdline = InitiatingProcessCommandLine, StartedParentProcessFolderPath = InitiatingProcessFolderPath, StartedProcessGrandParent = InitiatingProcessParentFileName, Timestamp
+) on DeviceName, Drive
+| where StartedProcessTimestamp between (LNKLaunchTimestamp ..(LNKLaunchTimestamp+1m))
+| project-away Drive1, DeviceName1
+| project-reorder LNKLaunchTimestamp, StartedProcessTimestamp, DeviceName, RemoteUrl, Drive, StartedProcessName, StartedProcessSHA1, StartedProcessPath,StartedProcessCommandline, StartedProcessParentName, StartedProcessParentCmdline, StartedParentProcessFolderPath, StartedProcessGrandParent, Timestamp
+
