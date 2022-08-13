@@ -1,0 +1,21 @@
+DeviceProcessEvents 
+// Set the query lookup time. I like to do this in the queries rather than in the GUI
+| where Timestamp > ago(14d) 
+// Filter to powershell processes. Use ~ for case-insensitive approach.
+| where FileName =~ "powershell.exe" or FileName =~ "pwsh.exe"
+// Filter to processes where the launched processes commandline contains letters "enc". This is to 
+| where ProcessCommandLine contains @"-enc"
+
+DeviceProcessEvents 
+| where Timestamp > ago(14d) 
+| where FileName =~ "powershell.exe" or FileName =~ "pwsh.exe"
+| where ProcessCommandLine contains @"-enc"
+| summarize count() by DeviceName
+
+DeviceProcessEvents 
+| where Timestamp > ago(14d) 
+| where ProcessCommandLine contains "/add"
+
+DeviceEvents 
+| where Timestamp > ago(14d) 
+| where ActionType == 'UserAccountCreated'
