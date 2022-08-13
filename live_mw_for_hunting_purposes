@@ -1,4 +1,4 @@
-https://threathunt.blog/running-live-mal…hunting-purposes/
+https://threathunt.blog/running-live-malware-for-threat-hunting-purposes/
 
 DeviceProcessEvents
 | where FileName =~ "rundll32.exe"
