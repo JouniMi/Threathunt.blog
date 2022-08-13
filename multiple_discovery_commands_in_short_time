@@ -1,0 +1,105 @@
+https://threathunt.blog/running-multiple-instances-of-discovery-commands-in-short-period-of-time/
+
+DeviceProcessEvents
+| where FileName has_any ("nslookup.exe","net.exe","ipconfig.exe","nltest.exe","systeminfo.exe","wmic.exe","ping.exe")
+| summarize count() by DeviceName,InitiatingProcessFileName,InitiatingProcessCreationTime,InitiatingProcessId,bin(Timestamp, 1m)
+
+DeviceProcessEvents
+| where FileName has_any ("nslookup.exe","net.exe","ipconfig.exe","nltest.exe","systeminfo.exe","wmic.exe","ping.exe")
+| summarize count() by DeviceName,InitiatingProcessFileName,InitiatingProcessCreationTime,InitiatingProcessId,bin(Timestamp, 1m)
+| where count_ > 5
+| join (
+DeviceProcessEvents
+| where FileName has_any ("nslookup.exe","net.exe","ipconfig.exe","nltest.exe","systeminfo.exe","wmic.exe","ping.exe")
+) on DeviceName,InitiatingProcessFileName,InitiatingProcessCreationTime,InitiatingProcessId
+| project DeviceName, Timestamp, Timestamp1, count_, FileName, ProcessCommandLine, InitiatingProcessFileName, InitiatingProcessParentFileName
+| sort by DeviceName, count_, Timestamp
+
+let lookupWindow = 1min;
+let lookupBin = lookupWindow / 2.0;
+DeviceProcessEvents
+| where FileName has_any ("nslookup.exe","net.exe","ipconfig.exe","nltest.exe","systeminfo.exe","wmic.exe","ping.exe")
+| summarize count() by DeviceName,bin(Timestamp, 1m)
+| where count_ > 5
+| extend AnomalyStartTime = Timestamp
+| extend TimeKey = bin(Timestamp, lookupBin)
+| join (
+DeviceProcessEvents
+| where FileName has_any ("nslookup.exe","net.exe","ipconfig.exe","nltest.exe","systeminfo.exe","wmic.exe","ping.exe")
+| extend ProcessLaunchTime = Timestamp
+| extend TimeKey = range(bin(Timestamp-lookupWindow, lookupBin),
+                              bin(Timestamp, lookupBin),
+                              lookupBin)
+| mv-expand TimeKey to typeof(datetime)
+) on DeviceName, TimeKey
+| where (ProcessLaunchTime - AnomalyStartTime) between (0m .. lookupWindow)
+| project DeviceName, Timestamp, Timestamp1, count_, FileName, ProcessCommandLine, InitiatingProcessFileName, InitiatingProcessParentFileName
+| sort by DeviceName, count_, Timestamp
+
+let lookupWindow = 5min;
+let lookupBin = lookupWindow / 2.0;
+DeviceProcessEvents
+| where InitiatingProcessParentFileName != @"SenseIR.exe"
+| where FileName has_any ("nslookup.exe","net.exe","ipconfig.exe","nltest.exe","systeminfo.exe","wmic.exe","ping.exe")
+| summarize count() by DeviceName,bin(Timestamp, 5m)
+| where count_ > 5
+| extend AnomalyStartTime = Timestamp
+| extend TimeKey = bin(Timestamp, lookupBin)
+| join (
+DeviceProcessEvents
+| where InitiatingProcessParentFileName != @"SenseIR.exe"
+| where FileName has_any ("nslookup.exe","net.exe","ipconfig.exe","nltest.exe","systeminfo.exe","wmic.exe","ping.exe")
+| extend ProcessLaunchTime = Timestamp
+| extend TimeKey = range(bin(Timestamp-lookupWindow, lookupBin),
+                              bin(Timestamp, lookupBin),
+                              lookupBin)
+| mv-expand TimeKey to typeof(datetime)
+) on DeviceName, TimeKey
+| where (ProcessLaunchTime - AnomalyStartTime) between (0m .. lookupWindow)
+| project DeviceName, AnomalyStartTime, ProcessLaunchTime, count_, FileName, ProcessCommandLine, InitiatingProcessFileName, InitiatingProcessCommandLine, InitiatingProcessParentFileName
+| sort by DeviceName, count_, Timestamp
+
+let lookupWindow = 5min; 
+let lookupBin = lookupWindow / 2.0; 
+let GetTheEvents = materialize (
+DeviceProcessEvents 
+| where InitiatingProcessParentFileName != @"SenseIR.exe" 
+| where FileName has_any ("nslookup.exe","net.exe","ipconfig.exe","nltest.exe","systeminfo.exe","wmic.exe","ping.exe") 
+| summarize count() by DeviceName,bin(Timestamp, 5m) 
+| extend AnomalyStartTime = Timestamp 
+| extend TimeKey = bin(Timestamp, lookupBin)
+| where count_ > 5
+| join ( 
+DeviceProcessEvents 
+| where InitiatingProcessParentFileName != @"SenseIR.exe" 
+| where FileName has_any ("nslookup.exe","net.exe","ipconfig.exe","nltest.exe","systeminfo.exe","wmic.exe","ping.exe") 
+| extend ProcessLaunchTime = Timestamp 
+| extend TimeKey = range(bin(Timestamp-lookupWindow, lookupBin), bin(Timestamp, lookupBin), lookupBin) 
+| mv-expand TimeKey to typeof(datetime) 
+) on DeviceName, TimeKey
+);
+GetTheEvents
+| summarize proccount = count() by FileName, count_, DeviceName, AnomalyStartTime
+| where proccount != count_
+| join kind=inner GetTheEvents on FileName, count_, DeviceName, AnomalyStartTime
+| project DeviceName, FileName, AnomalyStartTime, count_, proccount, ProcessCommandLine, InitiatingProcessFileName, InitiatingProcessFolderPath, InitiatingProcessCommandLine, InitiatingProcessParentFileName
+| sort by AnomalyStartTime, DeviceName
+
+let GetTheEvents = materialize (
+DeviceProcessEvents
+| where InitiatingProcessParentFileName != @"SenseIR.exe" 
+| where FileName has_any ("nslookup.exe","net.exe","ipconfig.exe","nltest.exe","systeminfo.exe","wmic.exe","ping.exe") 
+| summarize count() by DeviceName,FileName,InitiatingProcessFileName,InitiatingProcessCreationTime,InitiatingProcessId,bin(Timestamp, 5m) 
+| where count_ > 5
+| extend AnomalyStartTime = Timestamp 
+| join (
+DeviceProcessEvents 
+| where FileName has_any ("nslookup.exe","net.exe","ipconfig.exe","nltest.exe","systeminfo.exe","wmic.exe","ping.exe")
+) on DeviceName,InitiatingProcessFileName,InitiatingProcessCreationTime,InitiatingProcessId 
+| project DeviceName, Timestamp, count_, FileName, ProcessCommandLine, InitiatingProcessFileName, InitiatingProcessCommandLine, InitiatingProcessParentFileName, AnomalyStartTime, ProcessStartTime = Timestamp1
+);
+GetTheEvents
+| summarize proccount = count() by FileName, count_, DeviceName, AnomalyStartTime
+| where proccount != count_
+| join kind=inner GetTheEvents on FileName, count_, DeviceName, AnomalyStartTime
+| sort by DeviceName, count_, Timestamp
