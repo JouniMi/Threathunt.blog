@@ -1,0 +1,28 @@
+https://threathunt.blog/bzz-bzz-bumblebee-loader/
+
+let lookupWindow = 10min; 
+let lookupBin = lookupWindow / 2.0; 
+DeviceFileEvents 
+| where FileName endswith ".iso"
+| where ActionType == 'FileCreated'
+| extend TimeKey = bin(Timestamp, lookupBin)
+| project DeviceName, IsoCreationTime = Timestamp, IsoCreationFileName = FileName, IsoCreationFolderPath = FolderPath, IsoCreationSHA1 = SHA1, TimeKey, IsoCreationProcessName = InitiatingProcessFileName, IsoCreationProcessCmdline = InitiatingProcessCommandLine, IsoCreationProcessFolderPath = InitiatingProcessFolderPath, IsoCreationParentName = InitiatingProcessParentFileName
+| join (
+DeviceFileEvents 
+| extend ArchiveCreationTime = Timestamp
+| where FileName endswith ".zip" or FileName endswith ".rar" or FileName endswith ".7z"
+| where InitiatingProcessFileName =~ "chrome.exe" or InitiatingProcessFileName =~ "firefox.exe" or InitiatingProcessFileName =~ "msedge.exe" or InitiatingProcessFileName =~ "iexplore.exe"
+| extend TimeKey = range(bin(Timestamp-lookupWindow, lookupBin), bin(Timestamp, lookupBin), lookupBin) 
+| mv-expand TimeKey to typeof(datetime)
+| project DeviceName, IsoCreationActionType= ActionType, ArchiveCreationTime = Timestamp, ArchiveCreationFileName = FileName, ArchiveCreationFolderPath = FolderPath, ArchiveCreationSHA1 = SHA1, TimeKey, ArchiveCreationProcessName = InitiatingProcessFileName, ArchiveCreationProcessCmdline = InitiatingProcessCommandLine, ArchiveCreationProcessFolderPath = InitiatingProcessFolderPath, ArchiveCreationParentName = InitiatingProcessParentFileName
+) on DeviceName, TimeKey
+| project DeviceName, IsoCreationTime, IsoCreationFileName, ArchiveCreationFileName, IsoCreationProcessName, IsoCreationActionType, IsoCreationProcessCmdline, IsoCreationProcessFolderPath, ArchiveCreationProcessName, ArchiveCreationProcessCmdline, IsoCreationParentName, ArchiveCreationTime, ArchiveCreationFolderPath, TimeKey, ArchiveCreationProcessFolderPath, ArchiveCreationParentName, IsoCreationFolderPath, IsoCreationSHA1, ArchiveCreationSHA1
+
+DeviceProcessEvents 
+| where InitiatingProcessParentFileName =~ "cmd.exe"
+| where InitiatingProcessFileName  =~ "cmd.exe"
+| where InitiatingProcessCommandLine contains "IternalJob"
+| where InitiatingProcessCommandLine contains "rundll32"
+| where FileName =~ "rundll32.exe"
+| where ProcessCommandLine contains "IternalJob"
+| project Timestamp, DeviceName, InitiatingProcessParentFileName, InitiatingProcessFileName, InitiatingProcessCommandLine, FileName, ProcessCommandLine
