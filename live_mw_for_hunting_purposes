@@ -1,0 +1,42 @@
+https://threathunt.blog/running-live-mal…hunting-purposes/
+
+DeviceProcessEvents
+| where FileName =~ "rundll32.exe"
+| where InitiatingProcessFileName =~ "wscript.exe"
+| where InitiatingProcessParentFileName =~ "cmd.exe"
+| project Timestamp,DeviceName, FileName, ProcessCommandLine, InitiatingProcessFileName, InitiatingProcessCommandLine, InitiatingProcessParentFileName
+
+DeviceProcessEvents 
+| where FileName =~ "rundll32.exe" 
+| where InitiatingProcessFileName =~ "wscript.exe" 
+| where InitiatingProcessParentFileName =~ "cmd.exe" 
+| project Timestamp,DeviceName, InvestigatedProcessName=FileName, InvestigatedProcessCommandLine = ProcessCommandLine,InvestigatedProcessStartTime = ProcessCreationTime, InvestigatedProcessId = ProcessId, InitiatingProcessFileName, InitiatingProcessCommandLine, InitiatingProcessParentFileName 
+| join ( 
+DeviceNetworkEvents 
+| where InitiatingProcessFileName =~ "rundll32.exe" 
+| where RemoteIPType == "Public" 
+| project DeviceName, InvestigatedProcessName=InitiatingProcessFileName, InvestigatedProcessCommandLine = InitiatingProcessCommandLine,InvestigatedProcessStartTime = InitiatingProcessCreationTime, InvestigatedProcessId = InitiatingProcessId, RemoteIP, RemoteUrl 
+) on DeviceName, InvestigatedProcessCommandLine, InvestigatedProcessId, InvestigatedProcessName, InvestigatedProcessStartTime 
+| project-away DeviceName1, InvestigatedProcessCommandLine1, InvestigatedProcessId1, InvestigatedProcessName1, InvestigatedProcessStartTime1
+
+DeviceProcessEvents 
+| where FileName has_any ("rundll32.exe","regsvr32.exe") 
+| where InitiatingProcessFileName has_any ("wscript.exe","powershell.exe","cmd.exe","pwsh.exe") 
+| project Timestamp,DeviceName, InvestigatedProcessName=FileName, InvestigatedProcessCommandLine = ProcessCommandLine,InvestigatedProcessStartTime = ProcessCreationTime, InvestigatedProcessId = ProcessId, InitiatingProcessFileName, InitiatingProcessCommandLine, InitiatingProcessParentFileName 
+| join ( 
+DeviceNetworkEvents 
+| where InitiatingProcessFileName has_any ("rundll32.exe","regsvr32.exe") 
+| where RemoteIPType == "Public" 
+| project DeviceName, InvestigatedProcessName=InitiatingProcessFileName, InvestigatedProcessCommandLine = InitiatingProcessCommandLine,InvestigatedProcessStartTime = InitiatingProcessCreationTime, InvestigatedProcessId = InitiatingProcessId, RemoteIP, RemoteUrl 
+) on DeviceName, InvestigatedProcessCommandLine, InvestigatedProcessId, InvestigatedProcessName, InvestigatedProcessStartTime 
+| project-away DeviceName1, InvestigatedProcessCommandLine1, InvestigatedProcessId1, InvestigatedProcessName1, InvestigatedProcessStartTime1
+
+DeviceImageLoadEvents 
+| where InitiatingProcessFileName has_any ("rundll32.exe","regsvr32.exe") 
+| where FileName !endswith ".dll" 
+| join ( 
+DeviceNetworkEvents 
+| where InitiatingProcessFileName has_any ("rundll32.exe","regsvr32.exe") 
+| where RemoteIPType == "Public" 
+) on InitiatingProcessFileName, InitiatingProcessId, InitiatingProcessCreationTime, InitiatingProcessCommandLine 
+| project Timestamp, DeviceName, FileName, FolderPath, SHA1, InitiatingProcessFileName, InitiatingProcessCommandLine, RemoteIP, RemoteUrl, RemotePort, InitiatingProcessParentFileName
