@@ -1,0 +1,11 @@
+---- Query 1 ---- 
+index=sysmon Image="C:\\Windows\\System32\\regsvr32.exe" EventCode=11 TargetFilename="C:\\Windows\\System32\\*"
+
+---- Query 2 ---- 
+index=sysmon Image="C:\\Windows\\System32\\regsvr32.exe" EventCode=11 TargetFilename="*.exe" TargetFilename=C:\\Users\\*
+
+---- Query 3 ---- 
+index=sysmon Image="C:\\Windows\\System32\\regsvr32.exe" EventCode=3 NOT (DestinationIp="10.0.0.0/8" OR DestinationIp="172.16.0.0/12" OR DestinationIp="192.168.0.0/16") | table _time, host, EventCode, Image, ProcessId, DestinationPort, DestinationIp
+
+---- Query 4 ---- 
+index=sysmon Image="C:\\Windows\\System32\\regsvr32.exe" EventCode=11 TargetFilename="*.dll" | table _time User ComputerName Image ProcessId ProcessGuid TargetFileName | join type=inner ComputerName ProcessId ProcessGuid [search index=sysmon Image="C:\\Windows\\System32\\regsvr32.exe" EventCode=3 NOT (DestinationIp="10.0.0.0/8" OR DestinationIp="172.16.0.0/12" OR DestinationIp="192.168.0.0/16") | table _time, ComputerName, Image, ProcessId, ProcessGuid, DestinationPort, DestinationIp]
