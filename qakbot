@@ -1,0 +1,19 @@
+index=sysmon EventCode=1 AND (Image="C:\\Windows\\System32\\regsvr32.exe" OR Image="C:\\Windows\\SysWOW64\\regsvr32.exe") 
+| table _time, host, CommandLine, Image, ParentImage, ParentCommandLine, ProcessId 
+| rename ProcessId as SourceProcessId, Image as SourceImage 
+| join type=inner host SourceProcessId SourceImage [search index=sysmon AND (SourceImage="C:\\Windows\\System32\\regsvr32.exe" OR SourceImage="C:\\Windows\\SysWOW64\\regsvr32.exe") EventCode=10 
+| table _time, host, SourceProcessId, SourceImage, TargetImage, TargetProcessId]
+
+
+index=sysmon EventCode=1 AND (Image="C:\\Windows\\System32\\regsvr32.exe" OR Image="C:\\Windows\\SysWOW64\\regsvr32.exe") 
+| table _time, host, CommandLine, Image, ParentImage, ParentCommandLine, ProcessId 
+| rename ProcessId as SourceProcessId, Image as SourceImage 
+| join type=inner host SourceProcessId SourceImage [search index=sysmon AND (SourceImage="C:\\Windows\\System32\\regsvr32.exe" OR SourceImage="C:\\Windows\\SysWOW64\\regsvr32.exe") EventCode=10 
+| table _time, host, SourceProcessId, SourceImage, TargetImage, TargetProcessId] 
+| rename TargetProcessId as ProcessId, TargetImage as Image 
+| join type=outer host ProcessId [search index=sysmon EventCode=3 NOT (DestinationIp="10.0.0.0/8" OR DestinationIp="172.16.0.0/12" OR DestinationIp="192.168.0.0/16") 
+| table host ProcessId Image DestinationIp DestinationPort]
+
+
+index=wineventlog EventCode=7045 Service_File_Name="*regsvr32.exe*" 
+| table _time, host, Service_File_Name, Service_Name, Sid
