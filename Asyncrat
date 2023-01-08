@@ -1,0 +1,69 @@
+KQL queries:
+Sysmon | where EventID == 7 
+| where ImageLoaded endswith "mscorlib.ni.dll" 
+| join kind=inner ( 
+Sysmon | where EventID == 7 
+| where ImageLoaded endswith "clrjit.dll" 
+) on Image, Computer, ProcessId 
+| project Computer,TimeGenerated,Image, ImageLoaded, ImageLoaded1
+
+
+Sysmon | where EventID == 7 
+| where ImageLoaded endswith "mscorlib.ni.dll" 
+| join kind=inner ( 
+Sysmon 
+| where EventID == 7 
+| where ImageLoaded endswith "clrjit.dll" 
+) on Image, Computer, ProcessId 
+| project Computer,TimeGenerated,Image, ImageLoaded, ImageLoaded1, ProcessId 
+| join kind=inner ( 
+Sysmon 
+| where EventID == 22 or EventID == 3 
+) on Computer, Image, ProcessId 
+| project Computer, TimeGenerated, Image, RenderedDescription, DestinationIp, DestinationPort, QueryName, QueryResults
+
+
+Sysmon | where EventID == 7 
+| where ImageLoaded endswith "mscorlib.ni.dll" 
+| join kind=inner ( 
+Sysmon |
+where EventID == 7 
+| where ImageLoaded endswith "clrjit.dll" 
+) on Image, Computer, ProcessId 
+| project Computer,TimeGenerated, SourceImage = Image, SourceProcessId = ProcessId 
+| join kind=inner ( 
+Sysmon | where EventID == 10 
+) on SourceImage, SourceProcessId, Computer 
+| project TimeGenerated, Computer, SourceImage, Image = TargetImage, ProcessId = TargetProcessId 
+| join kind=inner ( 
+Sysmon 
+| where EventID == 22 or EventID == 3 
+) on Computer, Image, ProcessId 
+| project Computer, TimeGenerated, SourceImage, Image, RenderedDescription, DestinationIp, DestinationPort, QueryName, QueryResults
+
+SPLUNK:
+
+index=sysmon EventCode=7 ImageLoaded="*mscorlib.ni.dll" 
+| join type=inner Image, Computer, ProcessId [search index=sysmon EventCode=7 ImageLoaded="*clrjit.dll"]
+
+
+index=sysmon EventCode=7 ImageLoaded="*mscorlib.ni.dll" 
+| table _time, host, Image, ProcessId 
+| join type=inner ProcessId, host, Image [search index=sysmon EventCode=7 ImageLoaded="*clrjit.dll"] 
+| table _time, host, Image, ProcessId 
+| join type=inner Image host ProcessId [search index=sysmon EventCode=22 OR EventCode=3]
+| table _time, host Image, TaskCategory, QueryName, QueryResult, DestinationIp, DestinationPort
+
+
+index=sysmon EventCode=7 ImageLoaded="*mscorlib.ni.dll" 
+| table _time, host, Image, ProcessId 
+| join type=inner ProcessId, host, Image [search index=sysmon EventCode=7 ImageLoaded="*clrjit.dll"] 
+| rename Image as SourceImage 
+| rename ProcessId as SourceProcessId 
+| table _time, host, SourceImage, SourceProcessId 
+| join type=inner host, SourceImage, SourceProcessId [search index=sysmon EventCode=10] 
+| rename TargetProcessId as ProcessId 
+| rename TargetImage as Image 
+| table _time, host, SourceImage, Image, ProcessId 
+| join type=inner host, Image, ProcessId [search index=sysmon (EventCode=22 OR EventCode=3)] 
+| table _time, host, SourceImage, Image, TaskCategory, QueryName, QueryResult, DestinationIp, DestinationPort
