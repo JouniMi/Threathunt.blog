@@ -1,0 +1,44 @@
+sysmon | where ParentImage endswith "msbuild.exe" 
+| where Image has_any ("iexpolore.exe","powershell.exe","cmd.exe","pwsh.exe","wscript.exe") 
+| project TimeGenerated, Computer, Image, CommandLine, ParentImage, ParentCommandLine
+
+
+let processes = materialize ( 
+sysmon 
+| where ParentImage endswith "msbuild.exe" 
+| where Image has_any ("iexpolore.exe","powershell.exe","cmd.exe","pwsh.exe","wscript.exe") 
+| project TimeGenerated, Computer, Image, CommandLine, ParentImage, ParentCommandLine 
+); 
+processes 
+| summarize count() by Image 
+| where count_ < 5 
+| join kind=inner processes on Image
+
+
+sysmon 
+| where EventID == 10 or EventID == 8 
+| where SourceImage endswith "msbuild.exe" 
+| project TimeGenerated, Computer, TargetImage, SourceImage, EventID, CallTrace
+
+
+let processes = materialize ( 
+sysmon 
+| where EventID == 10 or EventID == 8 
+| where SourceImage endswith "msbuild.exe" 
+| project TimeGenerated, Computer, TargetImage, SourceImage, EventID, CallTrace 
+); 
+processes 
+| summarize count() by TargetImage 
+| where count_ < 5 
+| join kind=inner processes on TargetImage
+
+
+let processes = materialize ( 
+sysmon 
+| where Image endswith "msbuild.exe" 
+| project TimeGenerated, Computer, Image, CommandLine, ParentImage, ParentCommandLine 
+); 
+processes 
+| summarize count() by ParentImage 
+| join kind=inner processes on ParentImage 
+| sort by count_ asc
