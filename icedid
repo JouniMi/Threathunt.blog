@@ -1,0 +1,38 @@
+sysmon 
+| where Image endswith "cmd.exe" 
+| where ParentImage endswith "wscript.exe" or ParentImage endswith "cscript.exe" 
+| where CommandLine matches regex @'(\s+-((?i)encod?e?d?c?o?m?m?a?n?d?|e|en|enc|ec)\s).*([A-Za-z0-9+/]{50,}[=]{0,2})'
+| project TimeGenerated, Computer, ParentImage, Image, CommandLine, CurrentDirectory
+
+sysmon 
+| where EventID == 1 
+| where Image endswith "powershell.exe" 
+| where CommandLine matches regex @'(\s+-((?i)encod?e?d?c?o?m?m?a?n?d?|e|en|enc|ec)\s).*([A-Za-z0-9+/]{50,}[=]{0,2})' 
+| project ProcessCreateTime = TimeGenerated, Computer, ParentImage, Image, CommandLine, ProcessId 
+| join ( 
+sysmon 
+| where EventID == 3 
+| where Image endswith "powershell.exe" 
+| project NetConTime = TimeGenerated, Computer, Image, ProcessId, SourceIp, DestinationIp, DestinationPort, DestinationPortName, DestinationHostname 
+) on ProcessId, Computer 
+| project-away Computer1, Image1, ProcessId1
+
+sysmon 
+| where EventID == 1 
+| where Image endswith "powershell.exe" 
+| where CommandLine matches regex @'(\s+-((?i)encod?e?d?c?o?m?m?a?n?d?|e|en|enc|ec)\s).*([A-Za-z0-9+/]{50,}[=]{0,2})' 
+| project ProcessCreateTime = TimeGenerated, Computer, ParentImage, Image, CommandLine, ProcessId 
+| join ( 
+sysmon 
+| where EventID == 3 
+| where Image endswith "powershell.exe" 
+| project NetConTime = TimeGenerated, Computer, Image, ProcessId, SourceIp, DestinationIp, DestinationPort, DestinationPortName, DestinationHostname, PowerShellID = ProcessId
+) on ProcessId, Computer 
+| project-away Computer1, Image1, ProcessId1 
+| join ( 
+sysmon 
+| where EventID == 1 
+| where ParentImage endswith "powershell.exe" 
+| project ChildProcessTime = TimeGenerated, Computer, ChildProcessImage = Image, ChildProcessCommandLine = CommandLine, ChildProcessId = ProcessId, PowerShellID = ParentProcessId 
+) on PowerShellID, Computer 
+| project-away PowerShellID1
