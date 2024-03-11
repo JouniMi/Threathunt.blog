@@ -1,0 +1,14 @@
+let lookuptime = 30d;
+DeviceEvents
+| where Timestamp >ago(lookuptime)
+| where ActionType == "OpenProcessApiCall"
+| where FileName =~ "lsass.exe"
+| project ApiCallTimestamp = Timestamp, InitiatingProcessFileName=tolower(InitiatingProcessFileName), InitiatingProcessCommandLine=tolower(InitiatingProcessCommandLine), InitiatingProcessId, InitiatingProcessCreationTime=tolower(InitiatingProcessCreationTime), InitiatingProcessParentFileName=tolower(InitiatingProcessParentFileName)
+| join (
+DeviceFileEvents
+| where ActionType == "FileCreated"
+| where Timestamp >ago(lookuptime)
+| project FileEventTimestamp = Timestamp, InitiatingProcessFileName=tolower(InitiatingProcessFileName), InitiatingProcessCommandLine=tolower(InitiatingProcessCommandLine), InitiatingProcessId, InitiatingProcessCreationTime=tolower(InitiatingProcessCreationTime), InitiatingProcessParentFileName=tolower(InitiatingProcessParentFileName), FileActionType = ActionType, FilePath = FolderPath, ModifiedFileName = FileName
+) on InitiatingProcessFileName, InitiatingProcessCommandLine, InitiatingProcessId, InitiatingProcessCreationTime
+| where FileEventTimestamp between (ApiCallTimestamp .. (ApiCallTimestamp + 1m))
+| project ApiCallTimestamp, FileEventTimestamp, FilePath,FileActionType, ModifiedFileName, InitiatingProcessFileName, InitiatingProcessCommandLine, InitiatingProcessId, InitiatingProcessParentFileName
