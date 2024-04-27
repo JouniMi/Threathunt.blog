@@ -1,0 +1,69 @@
+# WMIexec
+let LookupTime = 30d;
+let GetRareWMIProcessLaunches = materialize (
+DeviceEvents
+| where Timestamp > ago(LookupTime)
+| where ActionType == @"ProcessCreatedUsingWmiQuery"
+| where isnotempty(FileName)
+| summarize count() by SHA1, InitiatingProcessCommandLine
+| where count_ > 5 | distinct SHA1); 
+DeviceEvents 
+| where Timestamp > ago(LookupTime)
+| where ActionType == @"ProcessCreatedUsingWmiQuery"
+| where SHA1 in~ (GetRareWMIProcessLaunches)
+| where isnotempty(FileName)
+| project DeviceName, WMIProcessLaunchTimestmap = Timestamp, ProcessLaunchedByWMI = tolower(FileName), ProcessLaunchedByWMICommandLine = tolower(ProcessCommandLine), ProcessLaunchedByWMICreationTime = ProcessCreationTime, ProcessLaunchedByWMISHA1 = tolower(SHA1), ProcessLaunchedByWMIID = ProcessId, InitiatingProcessFileName, InitiatingProcessCommandLine, InitiatingProcessParentCreationTime, InitiatingProcessParentFileName
+| join kind=leftouter (
+DeviceProcessEvents
+| where Timestamp > ago(LookupTime)
+| where InitiatingProcessSHA1 in~ (GetRareWMIProcessLaunches)
+|project DeviceName, ChildProcessTimestamp = Timestamp, ProcessLaunchedByWMI = tolower(InitiatingProcessFileName), ProcessLaunchedByWMICommandLine = tolower(InitiatingProcessCommandLine), ProcessLaunchedByWMICreationTime = InitiatingProcessCreationTime, ProcessLaunchedByWMISHA1 = tolower(InitiatingProcessSHA1), ProcessLaunchedByWMIID = InitiatingProcessId, WMIchild = FileName, WMIChildCommandline = ProcessCommandLine
+) on DeviceName, ProcessLaunchedByWMI, ProcessLaunchedByWMICommandLine, ProcessLaunchedByWMISHA1, ProcessLaunchedByWMIID
+| join kind=leftouter (
+DeviceNetworkEvents
+| where Timestamp > ago(LookupTime)
+| where InitiatingProcessSHA1 in~ (GetRareWMIProcessLaunches)
+|project DeviceName, ChildProcessTimestamp = Timestamp, ProcessLaunchedByWMI = tolower(InitiatingProcessFileName), ProcessLaunchedByWMICommandLine = tolower(InitiatingProcessCommandLine), ProcessLaunchedByWMICreationTime = InitiatingProcessCreationTime, ProcessLaunchedByWMISHA1 = tolower(InitiatingProcessSHA1), ProcessLaunchedByWMIID = InitiatingProcessId, WMIProcessRemoteIP = RemoteIP, WMIProcessRemoteURL = RemoteUrl
+) on DeviceName, ProcessLaunchedByWMI, ProcessLaunchedByWMICommandLine, ProcessLaunchedByWMISHA1, ProcessLaunchedByWMIID
+| where isnotempty(WMIProcessRemoteIP) or isnotempty(WMIchild)
+| summarize ConnectedAddresses = make_set(WMIProcessRemoteIP), ConnectedURLs = make_set(WMIProcessRemoteURL), LaunchedProcessNames = make_set(WMIchild), LaunchedProcessCmdlines = make_set(WMIChildCommandline) by DeviceName, ProcessLaunchedByWMI, ProcessLaunchedByWMICommandLine, ProcessLaunchedByWMICreationTime, ProcessLaunchedByWMISHA1, ProcessLaunchedByWMIID
+
+
+## WMIpersist
+let LookupTime = 30d; 
+DeviceEvents 
+| where Timestamp > ago(LookupTime) 
+| where ActionType == "WmiBindEventFilterToConsumer" 
+| where AdditionalFields contains "ActiveScriptEventConsumer" 
+| extend Consumer = extractjson("$.Consumer", AdditionalFields, typeof(string)),ESS = extractjson("$.ESS", AdditionalFields, typeof(string)), Namespace = extractjson("$.Namespace", AdditionalFields, typeof(string)), PossibleCause = extractjson("$.PossibleCause", AdditionalFields, typeof(string)) 
+| extend ScriptText = extract(@'\ScriptText = (.*;)',1,PossibleCause), ScriptingEngine = extract(@'\ScriptingEngine = (.*;)',1,PossibleCause) 
+| project-reorder Timestamp, DeviceName, Consumer, Namespace, ScriptingEngine, ScriptText
+
+
+##DcomExec
+let LookupTime = 30d;
+DeviceNetworkEvents
+| where Timestamp > ago(LookupTime)
+| where InitiatingProcessFileName =~ "explorer.exe"
+| where ActionType == 'InboundConnectionAccepted' 
+| project InboundConnTimestamp = Timestamp, DeviceName, InboundConnectionToExplorer = RemoteIP, InitiatingProcessFileName, InitiatingProcessCreationTime, InitiatingProcessId
+| join kind=leftouter (
+DeviceProcessEvents
+| where Timestamp > ago(LookupTime)
+| where InitiatingProcessFileName =~ "explorer.exe"
+| project ProcessStartTimestamp = Timestamp, DeviceName, StartedProcessCmdline = tolower(ProcessCommandLine), StartedProcessCreationTime = ProcessCreationTime, StartedProcessId = ProcessId, StartedProcessFileName = tolower(FileName), StartedProcessFolderPath = tolower(FolderPath), InitiatingProcessFileName, InitiatingProcessCreationTime, InitiatingProcessId
+) on DeviceName, InitiatingProcessFileName, InitiatingProcessCreationTime, InitiatingProcessId
+| where ProcessStartTimestamp between (InboundConnTimestamp .. (InboundConnTimestamp + 1m))
+| join kind=leftouter ( 
+DeviceProcessEvents 
+| where Timestamp > ago(LookupTime) 
+| where InitiatingProcessParentFileName =~ "explorer.exe"
+|project DeviceName, ChildProcessTimestamp = Timestamp, StartedProcessCmdline = tolower(InitiatingProcessCommandLine), StartedProcessCreationTime = InitiatingProcessCreationTime, StartedProcessId = InitiatingProcessId, StartedProcessFileName = tolower(InitiatingProcessFileName), StartedProcessFolderPath = tolower(InitiatingProcessFolderPath), ChildProcessId= ProcessId, ChildProcessName = FileName, ChildProcessCommandLine = ProcessCommandLine 
+) on DeviceName, StartedProcessCmdline, StartedProcessCreationTime, StartedProcessId, StartedProcessFileName, StartedProcessFolderPath
+| join kind=leftouter ( 
+DeviceNetworkEvents 
+| where Timestamp > ago(LookupTime) 
+| where InitiatingProcessParentFileName =~ "explorer.exe"
+|project DeviceName, ChildProcessTimestamp = Timestamp, StartedProcessCmdline = tolower(InitiatingProcessCommandLine), StartedProcessCreationTime = InitiatingProcessCreationTime, StartedProcessId = InitiatingProcessId, StartedProcessFileName = tolower(InitiatingProcessFileName), StartedProcessFolderPath = tolower(InitiatingProcessFolderPath), RemoteIP, RemoteUrl
+) on DeviceName, StartedProcessCmdline, StartedProcessCreationTime, StartedProcessId, StartedProcessFileName, StartedProcessFolderPath
+| summarize ConnectedAddresses = make_set(RemoteIP), ConnectedUrl = make_set(RemoteUrl), ChildProcesses = make_set(ChildProcessName), ChildProcessCmdlines = make_set(ChildProcessCommandLine) by DeviceName, InitiatingSourceIP = InboundConnectionToExplorer, StartedProcessCmdline, StartedProcessCreationTime, StartedProcessId, StartedProcessFileName, StartedProcessFolderPath, Timestamp = InboundConnTimestamp
