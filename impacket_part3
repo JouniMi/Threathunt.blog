@@ -1,0 +1,39 @@
+DeviceEvents 
+| where ActionType == "NamedPipeEvent" 
+| where isnotempty(RemoteIP) 
+| where AdditionalFields contains "winreg" 
+| project DeviceName, Timestamp, RemoteIP, PipeName = extractjson("$.PipeName", AdditionalFields, typeof(string)), RemoteClientsAccess = extractjson("$.RemoteClientsAccess", AdditionalFields, typeof(string)), ShareName = extractjson("$.ShareName", AdditionalFields, typeof(string)), AdditionalFields 
+| join ( 
+DeviceRegistryEvents 
+| where RegistryKey == @'HKEY_LOCAL_MACHINE\SYSTEM\ControlSet001\Services\RemoteRegistry' 
+| where RegistryValueName == @"Start" 
+| where RegistryValueData == @"3" 
+| project DeviceName, RegEditTimestamp = Timestamp, ActionType, RegistryKey, RegistryValueData, RegistryValueName, RegistryValueType 
+) on DeviceName 
+| where RegEditTimestamp < Timestamp 
+| project-away DeviceName1
+
+
+let lookuptime = 30d;
+DeviceEvents
+| where Timestamp >ago(lookuptime)
+| where ActionType == 'NamedPipeEvent' 
+| where AdditionalFields contains "atsvc"
+| project DeviceName, Timestamp, DeviceId, RemoteIP, PipeName = extractjson("$.PipeName", AdditionalFields, typeof(string)), RemoteClientsAccess = extractjson("$.RemoteClientsAccess", AdditionalFields, typeof(string)), ShareName = extractjson("$.ShareName", AdditionalFields, typeof(string))
+| join (
+DeviceRegistryEvents
+| where Timestamp >ago(lookuptime)
+| where ActionType == 'RegistryKeyCreated' 
+| where RegistryKey contains @"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\TaskCache\Tree\"
+| project RegTimestamp = Timestamp, DeviceName, DeviceId, RegistryKey, RegistryValueData, RegistryValueName, RegistryValueType, InitiatingProcessFileName, InitiatingProcessCommandLine, InitiatingProcessId, InitiatingProcessCreationTime
+) on DeviceName, DeviceId
+| where RegTimestamp between ((Timestamp - 2m) .. (Timestamp + 2m))
+| join (
+DeviceProcessEvents
+| where Timestamp >ago(lookuptime)
+| where InitiatingProcessFileName =~ "svchost.exe"
+| where InitiatingProcessCommandLine contains "Schedule"
+| project DeviceId, DeviceName, FileName, ProcessCommandLine, ProcessId, ProcessStartTimestamp = Timestamp, InitiatingProcessFileName, InitiatingProcessCommandLine, InitiatingProcessId, InitiatingProcessCreationTime
+) on DeviceName, DeviceId, InitiatingProcessFileName, InitiatingProcessCommandLine, InitiatingProcessId, InitiatingProcessCreationTime
+| where ProcessStartTimestamp between ( Timestamp .. (Timestamp +2m))
+| project DeviceName, Timestamp, StartedProcess = FileName, StartedProcessCommandLine = ProcessCommandLine, StartedProcessId = ProcessId, InitiatingProcessFileName, InitiatingProcessCommandLine, InitiatingProcessId, InitiatingProcessCreationTime, RegistryKey, RemoteIP, PipeName
