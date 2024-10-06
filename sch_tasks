@@ -1,0 +1,72 @@
+let ScheduledTasks = materialize (
+DeviceEvents
+| where ActionType contains "ScheduledTaskCreated"
+| extend TaskName = extractjson("$.TaskName", AdditionalFields, typeof(string))
+| extend TaskContent = extractjson("$.TaskContent", AdditionalFields, typeof(string))
+| extend SubjectUserName = extractjson("$.SubjectUserName", AdditionalFields, typeof(string))
+| extend Triggers = extractjson("$.Triggers", TaskContent, typeof(string))
+| extend Actions = extractjson("$.Actions", TaskContent, typeof(string))
+| extend Exec = extractjson("$.Exec", Actions, typeof(string))
+| extend Command = extractjson("$.Command", Exec, typeof(string))
+| extend Arguments = extractjson("$.Arguments", Exec, typeof(string))
+| project Timestamp, DeviceName, InitiatingProcessFileName, InitiatingProcessAccountName, TaskName, Command, Arguments, SubjectUserName, Triggers
+);
+ScheduledTasks
+| summarize count() by Command, Arguments
+| where count_ < 3
+| join ScheduledTasks on Command, Arguments
+| project-away Command1, Arguments1
+
+
+
+let RunningScheduledTasks = materialize(
+DeviceProcessEvents
+| where InitiatingProcessFileName == @"svchost.exe"
+| where InitiatingProcessCommandLine == @"svchost.exe -k netsvcs -p -s Schedule"
+| project Timestamp, DeviceName, AccountName, FileName, ProcessCommandLine, ProcessId, FolderPath
+| where FileName != @"MpCmdRun.exe"
+| where FolderPath !startswith @"C:\Windows\System32\" or FileName =~ "cmd.exe" or FileName =~ "powershell.exe" or FileName =~ "rundll32.exe" or FileName =~ "regsvr32.exe"
+);
+RunningScheduledTasks
+| summarize count() by FileName, ProcessCommandLine, FolderPath
+| where count_ < 10
+| join RunningScheduledTasks on FileName, ProcessCommandLine, FolderPath
+| project Timestamp, DeviceName, FileName, ProcessCommandLine, FolderPath, AccountName, count_
+
+
+
+let RunningScheduledTasks = materialize(
+DeviceProcessEvents
+| where InitiatingProcessFileName == @"svchost.exe"
+| where InitiatingProcessCommandLine == @"svchost.exe -k netsvcs -p -s Schedule"
+| project Timestamp, DeviceName, AccountName, FileName, ProcessCommandLine, ProcessId, FolderPath
+| where FileName != @"MpCmdRun.exe"
+| where FolderPath !startswith @"C:\Windows\System32\" or FileName =~ "cmd.exe" or FileName =~ "powershell.exe" or FileName =~ "rundll32.exe" or FileName =~ "regsvr32.exe"
+| summarize count() by FileName, ProcessCommandLine, FolderPath
+| where count_ < 3
+| summarize
+    Names = make_set(FileName),
+    CommandLines = make_set(ProcessCommandLine),
+    FolderPaths = make_set(FolderPath)
+);
+let Names = RunningScheduledTasks
+| project Names
+| mv-expand extended = Names
+| project asstring = tostring(extended)
+| distinct tolower(asstring);
+let CommandLines = RunningScheduledTasks
+| project CommandLines
+| mv-expand extended = CommandLines
+| project asstring = tostring(extended)
+| distinct tolower(asstring);
+let FolderPaths = RunningScheduledTasks
+| project FolderPaths
+| mv-expand extended = FolderPaths
+| project asstring = tostring(extended)
+| distinct tolower(asstring);
+union DeviceProcessEvents,DeviceNetworkEvents,DeviceFileEvents,DeviceRegistryEvents,DeviceLogonEvents,DeviceImageLoadEvents,DeviceEvents
+| where tolower(InitiatingProcessFileName) in (Names)
+and tolower(InitiatingProcessCommandLine) in (CommandLines)
+and tolower(InitiatingProcessFolderPath) in (FolderPaths)
+| sort by Timestamp desc
+| summarize Actions = make_set(ActionType), FileNames = make_set(FileName), RemoteIPs = make_set(RemoteIP) by InitiatingProcessFileName, InitiatingProcessId, InitiatingProcessCommandLine, InitiatingProcessCreationTime, DeviceName
